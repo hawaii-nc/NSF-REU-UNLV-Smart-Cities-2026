@@ -1,31 +1,44 @@
-# NSF REU — Rapid Motor Adaptation for Autonomous Racing
+# NSF REU: Rapid Motor Adaptation for Autonomous Racing
 
-**UNLV Smart Cities · NSF Research Experiences for Undergraduates · Summer 2026**
+**UNLV Smart Cities · NSF Research Experiences for Undergraduates (Award #2349616) · Summer 2026, continued through fall 2026**
 
-I adapted a two-stage **Rapid Motor Adaptation (RMA)** framework — originally built for quadcopters — to autonomous ground racing, so a car can infer changing tire grip in real time and adjust its driving without any map, GPS, or explicit friction sensor.
+Nathan Chong, advised by Prof. Venkata Prashant Modekurthy.
 
-## What I Built
+Can a small autonomous race car (F1TENTH) work out how much tire grip it has from its own motion, and drive accordingly, with no map, GPS or friction sensor? I adapted the two-phase **Rapid Motor Adaptation (RMA)** method to this problem.
 
-- **Phase 1 (base policy):** PPO policy (16M training steps) that drives from **108 LiDAR ranges + motion history** alone.
-- **Phase 2 (adaptation module):** Infers latent tire-grip parameters online from recent motion history, letting one policy handle multiple friction conditions.
-- **Deployment:** ROS2 + PyTorch on an NVIDIA Jetson aboard a Traxxas Slash 4×4 / F1Tenth car (VADER). See the deployment repo below.
+> **The code, trained models, raw results and paper are in [f1tenth-rma](https://github.com/hawaii-nc/f1tenth-rma).** Start there.
 
-## Results
+## What the project found (November 2026)
 
-- Closed **44% of the calibration gap** to an oracle baseline that knows true friction.
-- Reduced cross-grip performance variance by **20–21%** vs. a non-adapting policy.
-- Validated across **100 simulated episodes per condition on 14 evaluation circuits**.
-- Confirmed on **real hardware across 81 trials and 4 tire-friction conditions**, with statistically significant changes in steering and yaw-rate behavior (p = 0.0001, p = 0.009).
+After the summer, the whole pipeline was rebuilt, debugged and retrained, with every hypothesis registered before its runs. The findings changed:
 
-## Repo Map
+1. **Grip cannot be read from ordinary driving in the F1TENTH simulator.** When the car's actions are kept independent of grip, 0.5 s of motion history predicts grip with R² ≈ 0. Adaptation modules that seem to work are reading their own actions or just driving slowly; a non-adaptive car with a speed limit matches them.
+2. **A short active probe fixes this.** A 0.1 s speed pulse on straights asks the tires for more than low grip can give, and grip becomes readable (R² 0.89–0.93).
+3. **With the probe, adaptation beats any fixed speed limit.** At grip 0.4 the adaptive car crashes in 2–8% of episodes against 33–47% for a non-adaptive car matched to its speed (3 training seeds, 100 paired episodes each), and it transfers to unseen tracks.
+4. **It still works with the car's real sensing** (wheel odometry with slip, no gyro, 40 Hz LiDAR) at racing speed, though less well at the lowest grip.
+5. **All probe results are simulation only.** The real-car test is planned and has not been run.
+
+## About the summer (July 2026) numbers
+
+The summer poster reported 44% of the gap to an oracle closed and a 20–21% drop in cross-grip variance. **Those numbers should not be cited.** They came from a pipeline in which the physics encoder was never trained, among other bugs, and they did not survive the rebuild (see `docs/BUGS_AND_LESSONS.md` in f1tenth-rma).
+
+The summer's real-car pilot stands as a pilot: 81 trials through one 90° corner on four tire wraps, with an earlier checkpoint and no probe. Steering differed between bare and electrical-tape tires (p = 0.0001, which survives correction for the nine comparisons made); the yaw-rate difference (p = 0.009) does not survive that correction. It shows the policy responds to a real tire change, not that grip adaptation works on the car.
+
+## Repositories
 
 | Repo | Role |
 |---|---|
-| This repo | Project overview, results, and documentation |
-| [research_ws](https://github.com/hawaii-nc/research_ws) | Training workspace — PPO training, imitation learning, environments, and evaluation |
-| [f1tenth-vader-deployment](https://github.com/hawaii-nc/f1tenth-vader-deployment) | On-car ROS2 deployment — launch files, checkpoints, and trial tooling |
-| [f1tenth_benchmarks](https://github.com/hawaii-nc/f1tenth_benchmarks) | Benchmark suite — classical, mapless, local-map, and end-to-end RL racing agents |
+| [f1tenth-rma](https://github.com/hawaii-nc/f1tenth-rma) | **Current.** Training, evaluation, deployment node, trained models, results, pre-registration, paper |
+| This repo | Project overview |
+| [f1tenth-vader-deployment](https://github.com/hawaii-nc/f1tenth-vader-deployment) | July 2026 on-car backup (superseded by f1tenth-rma) |
+| [research_ws](https://github.com/hawaii-nc/research_ws) | July 2026 training workspace (superseded by f1tenth-rma) |
+| [f1tenth_benchmarks](https://github.com/hawaii-nc/f1tenth_benchmarks) | Fork of [BDEvan5/f1tenth_benchmarks](https://github.com/BDEvan5/f1tenth_benchmarks); source of four of the track maps |
 
-## Tech
+## Method in brief
 
-Python · PyTorch (PPO) · ROS2 · NVIDIA Jetson · LiDAR · Sim-to-Real Transfer
+- **Phase 1:** a policy that drives from 5 motion signals and 108 LiDAR ranges, trained by imitation (DAgger) of a grip-aware Pure Pursuit expert, with the true physics compressed to an 8-D vector.
+- **Phase 2:** an adaptation module (1-D CNN) that predicts that vector from the last 0.5 s of observations and actions.
+- **Active probe:** a brief speed or braking pulse on straights, applied in training and at test time.
+- **Hardware:** Traxxas Slash 4×4 F1TENTH car ("VADER") with an NVIDIA Jetson, ROS 2 and PyTorch.
+
+Python · PyTorch · ROS 2 · f1tenth_gym · sim-to-real
